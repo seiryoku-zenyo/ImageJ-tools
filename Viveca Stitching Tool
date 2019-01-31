@@ -1,0 +1,154 @@
+//VIVECA STITCHING
+//Started in January 2019
+//Macro build and maintained by Vasco Fachada (vasco.fachada@gmail.com)
+//At the moment this macro is using the stitching plugin "Grid/Collection stitching" used in Preibisch et al. Bioinformatics (2009).
+//This macro basically goes throught the folder of the user's choice and opens .czi files. From where its metadata is read and the individual tiles of the file are saved as orderly tiff files in a temp folder. The read metada is used to feed the mentioned plugin the parameters for stitching.
+
+Dialog.create("Ok, grab your needle. This is just like knitting");
+Dialog.addMessage("Welcome to our stitching tool. \n");
+Dialog.addMessage("\nThis macro is mainly aimed at stitching tiled-images produced by our Zeiss LSM700. \nAt the moment, stitching is only working with .czi files which cannot contain spaces in their file name. \nThis tool is prepared for stiching simple tiled images. You may encouter problems if you used 'positions' or 'timeseries'.");
+Dialog.addCheckbox("  Open your images once they are stitched? (They will be saved anyways.)", false); 
+Dialog.addCheckbox("  Process images for enhanced display? (not recommended for analysis)", true);
+Dialog.addMessage("Still under development. Any issues should be reported in order to improve the tool. \ncontact: vasco.fachada(at)gmail.com");
+Dialog.show();
+visualize_checkBox = Dialog.getCheckbox();
+processing_checkBox = Dialog.getCheckbox();
+
+//Finding the .czi files to stitch
+dir = getDirectory("Select a directory containing your CZI files you want to stitch");
+files = getFileList(dir);
+start = getTime();
+
+setBatchMode(true);
+
+//Deleting any previously produced folders in the case the macro broke half-way  
+for(f=0; f<files.length; f++) {
+	if(matches(files[f], ".*stitch_temp.*")){
+		old_temp_folder = dir+File.separator+files[f];
+		old_content = getFileList(old_temp_folder);
+		for (l=0; l<old_content.length; l++){
+			File.delete(old_temp_folder+File.separator+old_content[l]); //deleting individual previously files created. 
+  			File.delete(old_temp_folder);	
+		}
+		print("successfully deleted previously produced files");
+	}
+}
+
+
+k=0;
+n=0;
+nmrOfFilesStitched = 0;
+nmrOfTilesOpened = 0;
+pixelTotal = 0;
+sizeLoaded = 0;
+
+run("Bio-Formats Macro Extensions");
+for(f=0; f<files.length; f++) {
+		if(endsWith(files[f], ".czi")) { 
+		k++;
+		id = dir+files[f];
+		Ext.setId(id);
+		Ext.getSeriesCount(seriesCount);
+		//print(seriesCount+" series in "+id);
+		n+=seriesCount;
+		
+		for (i=0; i<seriesCount; i++) {
+			run("Bio-Formats Importer", "open=["+id+"] color_mode=Default view=Hyperstack stack_order=XYCZT use_virtual_stack series_"+(i+1));
+			nmrOfTilesOpened = nmrOfTilesOpened + 1;
+			
+			fullName	= getTitle();
+			dirName 	= substring(fullName, 0,lastIndexOf(fullName, ".czi"));
+			fileName 	= substring(fullName, lastIndexOf(fullName, " - ")+3, lengthOf(fullName));
+			fileSeries  = substring(fileName, indexOf(fileName, "#"), lengthOf(fileName)); //collects the number of series starting from the hashtaeg. #1 or #0001
+
+			//Creating temporary tiff files for analysis and organization of stiched file
+			//savingDir = dir+File.separator+dirName+File.separator;
+			//File.makeDirectory(savingDir);			
+			savingDir_temp = dir+File.separator+"stitch_temp";
+
+			File.makeDirectory(savingDir_temp);
+			saveAs("tiff", savingDir_temp+File.separator+fileName+".tif");									
+			close();
+		     	
+			tileNumr = tileNumr+1;
+			//STICHING AND VISUALIZATION
+			list = getFileList(savingDir_temp);
+			if (list.length == seriesCount){
+				
+				//Reading metadata and getting the number of tiles in each axis for later stitching steps
+				run("Bio-Formats Importer", "open=["+id+"] color_mode=Default view=Hyperstack stack_order=XYCZT use_virtual_stack series_"+(i+1));
+				fullMeta=getMetadata("Info");
+				gridMetaX = substring(fullMeta, lastIndexOf(fullMeta, "PositionGroup|TilesX #")+lengthOf("PositionGroup|TilesX #")+4, lastIndexOf(fullMeta, "PositionGroup|TilesX #")+lengthOf("PositionGroup|TilesX #")+5);
+				gridMetaY = substring(fullMeta, lastIndexOf(fullMeta, "PositionGroup|TilesY #")+lengthOf("PositionGroup|TilesY #")+4, lastIndexOf(fullMeta, "PositionGroup|TilesY #")+lengthOf("PositionGroup|TilesY #")+5);
+				gridX = parseInt(gridMetaX);
+				gridY = parseInt(gridMetaY);
+				if (gridX + gridY < 10)
+					mosaicSize = "{i}";
+				else if (gridX + gridY > 9 && gridX + gridY < 100)
+					mosaicSize = "{ii}";
+				else if (gridX + gridY > 99 && gridX + gridY < 1000)
+					mosaicSize = "{iii}";
+				else
+					mosaicSize = "{iiii}";
+				close();
+				
+				run("Grid/Collection stitching", "type=[Grid: row-by-row] order=[Right & Down                ] grid_size_x="+gridX+" grid_size_y="+gridY+" tile_overlap=9 first_file_index_i=1 directory="+savingDir_temp+" file_names=["+substring(fileName, 0, lengthOf(fileName)-lengthOf(fileSeries))+"#"+mosaicSize+".tif] output_textfile_name=TileConfiguration.txt fusion_method=[Linear Blending] regression_threshold=0.30 max/avg_displacement_threshold=2.50 absolute_displacement_threshold=3.50 compute_overlap ignore_z_stage computation_parameters=[Save memory (but be slower)] image_output=[Fuse and display]");
+
+				Stack.setDisplayMode("color");
+				Stack.setChannel(1);
+				run("Red");
+				Stack.setChannel(2);
+				run("Green");
+				Stack.setChannel(3);
+				run("Blue");
+				Stack.setDisplayMode("composite");
+				run("Stack to RGB");
+						
+				if (processing_checkBox==1) {
+					run("Despeckle");
+					run("Color Balance...");
+					run("Enhance Contrast", "saturated=0.1");
+					saveAs("tiff", dir+File.separator+"STITCHED&processed_"+substring(files[f], 0, lengthOf(files[f])-4)+".tif");//saving stiched image
+					saveType = "CHED&";
+				}
+				else {
+					saveAs("tiff", dir+File.separator+"STITCHED_"+substring(files[f], 0, lengthOf(files[f])-4)+".tif"); //saving stiched image
+					saveType = "CHED_";
+				}
+				//waitForUser;
+				//selectWindow("Fused (RGB)");
+				pixelTotal = pixelTotal+ (getHeight()*getWidth());
+				imgInfo=getImageInfo();
+				sizeLoaded = sizeLoaded + parseInt(substring(imgInfo, lastIndexOf(imgInfo, "Size:")+7, lastIndexOf(imgInfo, "MB")));
+				nmrOfFilesStitched = nmrOfFilesStitched+1;
+				close("*");
+				
+				//print(savingDir_temp);
+				//print("stiched and deleting");
+				list = getFileList(savingDir_temp);
+  				for (l=0; l<list.length; l++){
+  					//if (matches(list[l], ".*#.*")){
+  					File.delete(savingDir_temp+File.separator+list[l]); //deleting individual files created. The original data is still intact in the .czi files
+  					File.delete(savingDir_temp);
+  					//}		
+				}
+			}
+		}
+	}
+}
+	
+setBatchMode(false);
+if (visualize_checkBox==1) {
+	list = getFileList(dir);
+	for (l=0; l<list.length; l++){
+  		if (matches(list[l], ".*STIT"+saveType+".*")) open(dir+File.separator+list[l]);		
+	}
+}
+
+end = getTime();
+Dialog.create("This is not good for Zeiss business...");
+Dialog.addMessage("You just stitched "+nmrOfTilesOpened+" Tile(s) into "+nmrOfFilesStitched+" Mosaic file(s).\n \nThat's a total of "+pixelTotal+" pixels and "+sizeLoaded+" MB... \n...within "+(end-start)/1000+" seconds ("+(end-start)/1000/60+" minutes).\n \nYou know, that's Super Computer kind of stuff...clap clap!");
+Dialog.show();
+
+
+  
