@@ -167,8 +167,8 @@ for(f=0; f<files.length; f++) {
 			}
 		}
 	}
-	else  exit("Sorry, there seems to be no .czi files in \n"+dir);
 }
+if (k==0) exit("Sorry, there seems to be no .czi files in \n"+dir);
 	
 setBatchMode(false);
 if (visualize_checkBox==1) {
@@ -182,3 +182,6 @@ end = getTime();
 Dialog.create("This is not good for Zeiss business...");
 Dialog.addMessage("You just stitched "+nmrOfTilesOpened+" Tile(s) into "+nmrOfFilesStitched+" Mosaic file(s).\n \nThat's a total of "+pixelTotal+" pixels and "+sizeLoaded+" MB... \n...within "+(end-start)/1000+" seconds ("+(end-start)/1000/60+" minutes).\n \nYou know, that's Super Computer kind of stuff...clap clap!");
 Dialog.show();
+
+
+  
