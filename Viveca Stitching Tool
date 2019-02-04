@@ -106,6 +106,10 @@ for(f=0; f<files.length; f++) {
 					else
 						mosaicSize = "{iiii}";
 
+						print("X= "+gridX);
+						print("Y= "+gridY);
+						waitForUser;
+
 					//Reading tile scanning direction
 					if (substring(fullMeta, indexOf(fullMeta, "BiDirectional #1")+19, indexOf(fullMeta, "BiDirectional #1")+23) == "fals") tilingDirection = "[Grid: row-by-row] order=[Right & Down                ]";
 					if (substring(fullMeta, indexOf(fullMeta, "BiDirectional #1")+19, indexOf(fullMeta, "BiDirectional #1")+23) == "true") tilingDirection = "[Grid: snake by rows] order=[Right & Down                ]";				
@@ -171,7 +175,8 @@ for(f=0; f<files.length; f++) {
 		}
 	}
 }
-if (k==0) exit("Sorry, there seems to be no .czi files with more than 1 tile in \n"+dir);
+if (k==0) exit("Sorry, there seems to be no .czi files in \n"+dir+".");
+else if (seriesCount == 1) exit("Your .czi file(s) in \n"+dir+" \ndon't seem to have more than 1 tile.");
 	
 setBatchMode(false);
 if (visualize_checkBox==1) {
