@@ -97,18 +97,14 @@ for(f=0; f<files.length; f++) {
 					gridMetaY = substring(fullMeta, lastIndexOf(fullMeta, "PositionGroup|TilesY #")+lengthOf("PositionGroup|TilesY #")+4, lastIndexOf(fullMeta, "PositionGroup|TilesY #")+lengthOf("PositionGroup|TilesY #")+5);
 					gridX = parseInt(gridMetaX);
 					gridY = parseInt(gridMetaY);
-					if (gridX + gridY < 10)
+					if (gridX * gridY < 10)
 						mosaicSize = "{i}";
-					else if (gridX + gridY > 9 && gridX + gridY < 100)
+					else if (gridX * gridY > 9 && gridX * gridY < 100)
 						mosaicSize = "{ii}";
-					else if (gridX + gridY > 99 && gridX + gridY < 1000)
+					else if (gridX * gridY > 99 && gridX * gridY < 1000)
 						mosaicSize = "{iii}";
 					else
 						mosaicSize = "{iiii}";
-
-						print("X= "+gridX);
-						print("Y= "+gridY);
-						waitForUser;
 
 					//Reading tile scanning direction
 					if (substring(fullMeta, indexOf(fullMeta, "BiDirectional #1")+19, indexOf(fullMeta, "BiDirectional #1")+23) == "fals") tilingDirection = "[Grid: row-by-row] order=[Right & Down                ]";
