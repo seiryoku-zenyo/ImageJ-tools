@@ -130,7 +130,7 @@ for(f=0; f<files.length; f++) {
 					close();
 
 					//"Grid/Collection stitching" used in Preibisch et al. Bioinformatics (2009).
-					run("Grid/Collection stitching", "type="+tilingDirection+" grid_size_x="+gridX+" grid_size_y="+gridY+" tile_overlap="+tlOverlap+" first_file_index_i=1 directory="+savingDir_temp+" file_names=["+substring(fileName, 0, lengthOf(fileName)-lengthOf(fileSeries))+"#"+mosaicSize+".tif] output_textfile_name=TileConfiguration.txt fusion_method=[Linear Blending] regression_threshold=0.30 max/avg_displacement_threshold=2.50 absolute_displacement_threshold=3.50 compute_overlap ignore_z_stage computation_parameters=[Save memory (but be slower)] image_output=[Fuse and display]");
+					run("Grid/Collection stitching", "type="+tilingDirection+" grid_size_x="+gridX+" grid_size_y="+gridY+" tile_overlap="+tlOverlap+" first_file_index_i=1 directory="+savingDir_temp+" file_names=["+substring(fileName, 0, lengthOf(fileName)-lengthOf(fileSeries))+"#"+mosaicSize+".tif] output_textfile_name=TileConfiguration.txt fusion_method=[Linear Blending] regression_threshold=0.30 max/avg_displacement_threshold=2.50 absolute_displacement_threshold=3.50 ignore_z_stage computation_parameters=[Save memory (but be slower)] image_output=[Fuse and display]");
 
 					if (colors.length<2) run(colors[0]);
 					else{
