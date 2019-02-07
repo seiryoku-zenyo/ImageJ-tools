@@ -125,8 +125,8 @@ for(f=0; f<files.length; f++) {
 						if (channels[ii] == "555") colors[ii] = "Yellow";
 						if (channels[ii] == "639") colors[ii] = "Red";
 					}
-					//detecting the voxel size of the current raw file, so the final image also has the same scale.
-					getVoxelSize(width, height, depth, unit);
+					
+					getVoxelSize(width, height, depth, unit); //detecting the voxel size of the current raw file, so the final image also has the same scale.
 					close();
 
 					//"Grid/Collection stitching" used in Preibisch et al. Bioinformatics (2009).
@@ -144,7 +144,7 @@ for(f=0; f<files.length; f++) {
 					}
 					
 					//Setting the native scale
-					run("Properties...", "channels=1 slices=1 frames=1 unit="+unit+" pixel_width="+width+" pixel_height="+height+" voxel_depth="+depth+");
+					run("Properties...", "channels=1 slices="+zSteps+" frames="+tPoints+" unit="+unit+" pixel_width="+width+" pixel_height="+height+" voxel_depth="+depth+"");
 
 					if (processing_checkBox==1) { //Basic processing like contrast enhancing and despeckling
 						run("Despeckle", "stack");
@@ -162,7 +162,7 @@ for(f=0; f<files.length; f++) {
 					imgInfo=getImageInfo();
 					sizeLoaded = sizeLoaded + parseInt(substring(imgInfo, lastIndexOf(imgInfo, "Size:")+7, lastIndexOf(imgInfo, "MB")));
 					nmrOfFilesStitched = nmrOfFilesStitched+1;
-					close("*");
+					close();
 				
 					list = getFileList(savingDir_temp);
   					for (l=0; l<list.length; l++){
