@@ -131,10 +131,6 @@ for(f=0; f<files.length; f++) {
 
 					//"Grid/Collection stitching" used in Preibisch et al. Bioinformatics (2009).
 					run("Grid/Collection stitching", "type="+tilingDirection+" grid_size_x="+gridX+" grid_size_y="+gridY+" tile_overlap="+tlOverlap+" first_file_index_i=1 directory="+savingDir_temp+" file_names=["+substring(fileName, 0, lengthOf(fileName)-lengthOf(fileSeries))+"#"+mosaicSize+".tif] output_textfile_name=TileConfiguration.txt fusion_method=[Linear Blending] regression_threshold=0.30 max/avg_displacement_threshold=2.50 absolute_displacement_threshold=3.50 ignore_z_stage computation_parameters=[Save memory (but be slower)] image_output=[Fuse and display]");
-					
-					//Setting the native scale
-					run("Properties...", "channels=1 slices=1 frames=1 unit="+unit+" pixel_width="+width+" pixel_height="+height+" voxel_depth="+depth+");
-
 
 					if (colors.length<2) run(colors[0]);
 					else{
@@ -147,6 +143,9 @@ for(f=0; f<files.length; f++) {
 						run("RGB Color", "slices");
 					}
 					
+					//Setting the native scale
+					run("Properties...", "channels=1 slices=1 frames=1 unit="+unit+" pixel_width="+width+" pixel_height="+height+" voxel_depth="+depth+");
+
 					if (processing_checkBox==1) { //Basic processing like contrast enhancing and despeckling
 						run("Despeckle", "stack");
 						//run("Color Balance...");
