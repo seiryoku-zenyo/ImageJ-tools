@@ -125,8 +125,10 @@ for(f=0; f<files.length; f++) {
 						if (channels[ii] == "555") colors[ii] = "Yellow";
 						if (channels[ii] == "639") colors[ii] = "Red";
 					}
-					//setBatchMode(false);
-					//waitForUser;
+					//making image scale (voxel size) global, so the final image also has the same scale.
+					getDimensions(width, height, channels, slices, frames);
+					getVoxelSize(width, height, depth, unit);
+					run("Properties...", "channels="+channels+" slices="+slices+" frames="+frames+" unit="+unit+" pixel_width="+width+" pixel_height="+height+" voxel_depth="+depth+" global");
 					close();
 
 					//"Grid/Collection stitching" used in Preibisch et al. Bioinformatics (2009).
