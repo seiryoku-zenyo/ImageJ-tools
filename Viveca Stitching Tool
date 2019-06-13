@@ -13,20 +13,23 @@ Z-stack stiching is supported
 Both modes of tile scanning in ZEN black are supported, uni and bidirectional
 */
 
+close("*");
 Dialog.create("Ok, grab your needle. This is just like knitting");
 Dialog.addMessage("Welcome to our stitching tool. \n");
 Dialog.addMessage("\nThis macro is mainly aimed at stitching tiled-images produced by our Zeiss LSM700. \nAt the moment, stitching is only working with .czi files which cannot contain spaces in their file name. \nThis tool is prepared for stiching simple tiled images. You may encouter problems if you used 'positions' or 'timeseries'.");
-Dialog.addCheckbox("  Open your images once they are stitched? (They will be saved anyways.)", false); 
-Dialog.addCheckbox("  Process images for enhanced display? (not recommended for analysis)", true);
+Dialog.addCheckbox("  Display your images once they are stitched?", true); 
+Dialog.addCheckbox("\n  My tiles were scanned in 'zigzag / snake / bidirection' mode", false);
 Dialog.addMessage("Still under development. Any issues should be reported in order to improve the tool. \ncontact: vasco.fachada(at)gmail.com");
 Dialog.show();
 visualize_checkBox = Dialog.getCheckbox();
-processing_checkBox = Dialog.getCheckbox();
+tilingMode_checkBox = Dialog.getCheckbox();
 
 //Finding the .czi files to stitch
 dir = getDirectory("Select a directory containing your CZI files you want to stitch");
-files = getFileList(dir);
 start = getTime();
+files = getFileList(dir);
+outputFold = dir+"Stitchings";
+File.makeDirectory(outputFold);
 
 setBatchMode(true);
 
@@ -35,157 +38,255 @@ for(f=0; f<files.length; f++) {
 	if(matches(files[f], ".*stitch_temp.*")){
 		old_temp_folder = dir+File.separator+files[f];
 		old_content = getFileList(old_temp_folder);
-		for (l=0; l<old_content.length; l++){
-			File.delete(old_temp_folder+File.separator+old_content[l]); //deleting individual previously files created. 
-  			File.delete(old_temp_folder);	
+		for (li=0; li<old_content.length; li++){
+			old_images = getFileList(old_temp_folder+File.separator+old_content[li]);
+			for (lii=0; lii<old_images.length; lii++){
+				File.delete(old_temp_folder+File.separator+old_content[li]+File.separator+old_images[lii]);
+			} 
+			File.delete(old_temp_folder+File.separator+old_content[li]);
 		}
-		print("successfully deleted previously produced files");
+  		File.delete(old_temp_folder);	
+		print("successfully deleted previously produced temp files");
 	}
 }
 
 
 k=0;
 n=0;
+Tot_nmrOfTilesOpened = 0;
 nmrOfFilesStitched = 0;
-nmrOfTilesOpened = 0;
+resultArray = newArray(0);
 pixelTotal = 0;
 sizeLoaded = 0;
 
-run("Bio-Formats Macro Extensions");
-for(f=0; f<files.length; f++) {
-		if(endsWith(files[f], ".czi")) { 
-		k++;
-		id = dir+files[f];
-		Ext.setId(id);
-		Ext.getSeriesCount(seriesCount);
-		n+=seriesCount;
+	run("Bio-Formats Macro Extensions");
+	for(f=0; f<files.length; f++) {
+		if(endsWith(files[f], ".czi")) {
+			nmrOfTilesOpened = 0; 
+			k++;
+			id = dir+files[f];
+			//print(files[f]);
+			//waitForUser;
+			Ext.setId(id);
+			Ext.getSeriesCount(seriesCount);
+			n+=seriesCount;
 
-		if (seriesCount > 1){
-			for (i=0; i<seriesCount; i++) {
-				run("Bio-Formats Importer", "open=["+id+"] color_mode=Default view=Hyperstack stack_order=XYCZT use_virtual_stack series_"+(i+1));
-				nmrOfTilesOpened = nmrOfTilesOpened + 1;
+
+			//READING METADATA
+			run("Bio-Formats Importer", "open=["+id+"] color_mode=Default view=Hyperstack stack_order=XYCZT use_virtual_stack series_"+(1));
+			fullMeta=getMetadata("Info");
+	
+			//Determining if 2D or 3D
+			zSteps = parseInt(substring(fullMeta, indexOf(fullMeta, "SizeZ =")+8, indexOf(fullMeta, "SizeZ =")+10)); 
+			print("z-steps: "+zSteps); 
+				
+			//Determining if timeseries
+			tPoints = parseInt(substring(fullMeta, indexOf(fullMeta, "SizeT =")+8, indexOf(fullMeta, "SizeT =")+9));
+			print("timepoints: "+tPoints);
 			
-				fullName	= getTitle();
-				dirName 	= substring(fullName, 0,lastIndexOf(fullName, ".czi"));
-				fileName 	= substring(fullName, lastIndexOf(fullName, " - ")+3, lengthOf(fullName));
-				fileSeries  = substring(fileName, indexOf(fileName, "#"), lengthOf(fileName)); //collects the number of series starting from the hashtaeg. #1 or #0001
+			//Determining number of positions. Ine the case of the 12-well plate container functions in LSM700 Zen black, each position corresponds to each well.
+			if (indexOf(fullMeta, "Information|Image|SizeS #1 =") > -1){ 
+				positionsNum = substring(fullMeta, lastIndexOf(fullMeta, "Information|Image|SizeS #1 =")+lengthOf("Information|Image|SizeS #1 =")+0, lastIndexOf(fullMeta, "Information|Image|SizeS #1 =")+lengthOf("Information|Image|SizeS #1 =")+3);
+				positionsNum = parseInt(positionsNum);				
+			}else
+				positionsNum = 1;
+			print("number of positions: "+positionsNum);
+								
+			//Getting the number of tiles in each axis for later stitching steps
+			posStartInd = 3+lengthOf(toString(positionsNum));
+			posLastInd = 4+lengthOf(toString(positionsNum));	
+			gridMetaX = substring(fullMeta, lastIndexOf(fullMeta, "PositionGroup|TilesX #")+lengthOf("PositionGroup|TilesX #")+posStartInd, lastIndexOf(fullMeta, "PositionGroup|TilesX #")+lengthOf("PositionGroup|TilesX #")+posLastInd);
+			gridMetaY = substring(fullMeta, lastIndexOf(fullMeta, "PositionGroup|TilesY #")+lengthOf("PositionGroup|TilesY #")+posStartInd, lastIndexOf(fullMeta, "PositionGroup|TilesY #")+lengthOf("PositionGroup|TilesY #")+posLastInd);
+			gridX = parseInt(gridMetaX);
+			print("X grid: "+gridX);
+			gridY = parseInt(gridMetaY);
+			print("Y grid: "+gridY);
+			TilesPerPos = gridX * gridY;
+			print("Tiles per position: "+TilesPerPos);
+			TotalNumTiles = TilesPerPos * positionsNum * tPoints;
+			print("total number of tiles: "+TotalNumTiles);
+			if (TotalNumTiles < 10)
+				mosaicSize = "{i}";
+			else if (TotalNumTiles > 9 && TotalNumTiles < 100)
+				mosaicSize = "{ii}";
+			else if (TotalNumTiles > 99 && TotalNumTiles < 1000)
+				mosaicSize = "{iii}";
+			else
+				mosaicSize = "{iiii}";
 
-				//Creating temporary tiff files for analysis and organization of stiched file			
-				savingDir_temp = dir+File.separator+"stitch_temp";
+			print("mosaic size: "+mosaicSize);
+			//Reading tile scanning direction
+			if (tilingMode_checkBox==1)
+				tilingDirection = "[Grid: snake by rows] order=[Right & Down                ]";
+			else
+				tilingDirection = "[Grid: row-by-row] order=[Right & Down                ]";
+			print("Tiling direction: "+tilingDirection);	
+			
+			//Reading tile overlap
+			tlOv = substring(fullMeta, indexOf(fullMeta, "TileAcquisitionOverlap #")+28, indexOf(fullMeta, "TileAcquisitionOverlap #")+30);
+			if (tlOv == '0.')
+				tlOverlap = 100*parseFloat(substring(fullMeta, indexOf(fullMeta, "TileAcquisitionOverlap #")+28, indexOf(fullMeta, "TileAcquisitionOverlap #")+39));
+			else
+				tlOverlap = 0;
+			print("tile overlap: "+tlOverlap);
 
+			//Looking and determining number of channels in data
+			channels_nmr = 	parseInt(substring(fullMeta, indexOf(fullMeta, "SizeC =")+8, indexOf(fullMeta, "SizeC =")+9)); 
+			channels = newArray(channels_nmr);
+			colors = newArray(channels_nmr);
+				
+			for (ii=0; ii<channels_nmr; ii++){
+				laserUsed = substring(fullMeta, indexOf(fullMeta, "Attenuator|Laser #"+ii+1+" =")+27, indexOf(fullMeta, "Attenuator|Laser #"+ii+1+" =")+31);
+				channels[ii] = parseInt(laserUsed);
+				//print(channels[ii]);	
+				if (channels[ii] == 405) colors[ii] = "Blue";
+				else if (channels[ii] == 488) colors[ii] = "Green";
+				else if (channels[ii] == 555) colors[ii] = "Yellow";
+				else if (channels[ii] == 639) colors[ii] = "Red";
+				//else print(colors[ii]);
+				else exit("While reading the metadata we have been unable to find which laser was used to scan one or more of the channels. \nPlease contact vasco.fachada@gmail.com for help.");	
+			}
+			
+		//waitForUser;
+		
+			getVoxelSize(width, height, depth, unit); //detecting the voxel size of the current raw file, so the final image also has the same scale.
+			close();
+			
+			//Creating temporary tiff files for analysis and organization of stiched file
+			for (l=1; l<positionsNum+1; l++){
+							
+				savingDir_temp = outputFold+File.separator+"stitch_temp";
 				File.makeDirectory(savingDir_temp);
-				saveAs("tiff", savingDir_temp+File.separator+fileName+".tif");									
-				close();
-		     	
-				tileNumr = tileNumr+1;
-				//STICHING AND VISUALIZATION
-				list = getFileList(savingDir_temp);
-				if (list.length == seriesCount){
-				
-					//READING METADATA
-					run("Bio-Formats Importer", "open=["+id+"] color_mode=Default view=Hyperstack stack_order=XYCZT use_virtual_stack series_"+(i+1));
-					fullMeta=getMetadata("Info");
+				positionDir = savingDir_temp+File.separator+"position"+l;
+				File.makeDirectory(positionDir);
 
-					//Determining if 2D or 3D
-					zSteps = parseInt(substring(fullMeta, indexOf(fullMeta, "SizeZ =")+8, indexOf(fullMeta, "SizeZ =")+10));  
-				
-					//Determining if timeseries
-					tPoints = parseInt(substring(fullMeta, indexOf(fullMeta, "SizeT =")+8, indexOf(fullMeta, "SizeT =")+9));
-			
-					//Getting the number of tiles in each axis for later stitching steps
-					gridMetaX = substring(fullMeta, lastIndexOf(fullMeta, "PositionGroup|TilesX #")+lengthOf("PositionGroup|TilesX #")+4, lastIndexOf(fullMeta, "PositionGroup|TilesX #")+lengthOf("PositionGroup|TilesX #")+5);
-					gridMetaY = substring(fullMeta, lastIndexOf(fullMeta, "PositionGroup|TilesY #")+lengthOf("PositionGroup|TilesY #")+4, lastIndexOf(fullMeta, "PositionGroup|TilesY #")+lengthOf("PositionGroup|TilesY #")+5);
-					gridX = parseInt(gridMetaX);
-					gridY = parseInt(gridMetaY);
-					if (gridX * gridY < 10)
-						mosaicSize = "{i}";
-					else if (gridX * gridY > 9 && gridX * gridY < 100)
-						mosaicSize = "{ii}";
-					else if (gridX * gridY > 99 && gridX * gridY < 1000)
-						mosaicSize = "{iii}";
-					else
-						mosaicSize = "{iiii}";
+				if (seriesCount > 1){
+					for (i=1; i<TilesPerPos+1; i++) {
+						run("Bio-Formats Importer", "open=["+id+"] color_mode=Default view=Hyperstack stack_order=XYCZT use_virtual_stack series_"+(i+nmrOfTilesOpened));
 
-					//Reading tile scanning direction
-					if (substring(fullMeta, indexOf(fullMeta, "BiDirectional #1")+19, indexOf(fullMeta, "BiDirectional #1")+23) == "fals") tilingDirection = "[Grid: row-by-row] order=[Right & Down                ]";
-					if (substring(fullMeta, indexOf(fullMeta, "BiDirectional #1")+19, indexOf(fullMeta, "BiDirectional #1")+23) == "true") tilingDirection = "[Grid: snake by rows] order=[Right & Down                ]";				
+						fullName	= getTitle();
+						//dirName 	= substring(fullName, 0,lastIndexOf(fullName, ".czi"));
+						fileName 	= substring(fullName, lastIndexOf(fullName, " - ")+3, lengthOf(fullName));
+						//5print(fileName);
+						fileSeries  = substring(fileName, indexOf(fileName, "#"), lengthOf(fileName)); //collects the number of series starting from the hashtag. #1 or #0001
 				
-					//Reading tile overlap
-					tlOverlap = 100*parseFloat(substring(fullMeta, indexOf(fullMeta, "TileAcquisitionOverlap #")+28, indexOf(fullMeta, "TileAcquisitionOverlap #")+39));
-
-					//Looking and determining number of channels in data
-					channels_nmr = 	parseInt(substring(fullMeta, indexOf(fullMeta, "SizeC =")+8, indexOf(fullMeta, "SizeC =")+9)); 
-					channels = newArray(channels_nmr);
-					colors = newArray(channels_nmr);
-				
-					for (ii=0; ii<channels_nmr; ii++){
-						channels[ii] = substring(fullMeta, indexOf(fullMeta, "ExcitationWavelength #"+ii+1+" =")+26, indexOf(fullMeta, "ExcitationWavelength #"+ii+1+" =")+29);
-						if (channels[ii] == "405") colors[ii] = "Blue";
-						if (channels[ii] == "488") colors[ii] = "Green";
-						if (channels[ii] == "555") colors[ii] = "Yellow";
-						if (channels[ii] == "639") colors[ii] = "Red";
+						saveAs("tiff", positionDir+File.separator+fileName+".tif");									
+						close();
 					}
 					
-					getVoxelSize(width, height, depth, unit); //detecting the voxel size of the current raw file, so the final image also has the same scale.
-					close();
-
+		     	
+				
+					//STICHING AND VISUALIZATION
+					
 					//"Grid/Collection stitching" used in Preibisch et al. Bioinformatics (2009).
-					run("Grid/Collection stitching", "type="+tilingDirection+" grid_size_x="+gridX+" grid_size_y="+gridY+" tile_overlap="+tlOverlap+" first_file_index_i=1 directory="+savingDir_temp+" file_names=["+substring(fileName, 0, lengthOf(fileName)-lengthOf(fileSeries))+"#"+mosaicSize+".tif] output_textfile_name=TileConfiguration.txt fusion_method=[Linear Blending] regression_threshold=0.30 max/avg_displacement_threshold=2.50 absolute_displacement_threshold=3.50 ignore_z_stage computation_parameters=[Save memory (but be slower)] image_output=[Fuse and display]");
+					run("Grid/Collection stitching", "type="+tilingDirection+" grid_size_x="+gridX+" grid_size_y="+gridY+" tile_overlap="+tlOverlap+" first_file_index_i="+1+nmrOfTilesOpened+" directory="+positionDir+" file_names=["+substring(fileName, 0, lengthOf(fileName)-lengthOf(fileSeries))+"#"+mosaicSize+".tif] output_textfile_name=TileConfiguration.txt fusion_method=[Linear Blending] regression_threshold=0.30 max/avg_displacement_threshold=2.50 absolute_displacement_threshold=3.50 ignore_z_stage computation_parameters=[Save memory (but be slower)] image_output=[Fuse and display]");
+					//run("Grid/Collection stitching", "type= grid_size_x="+gridX+" grid_size_y="+gridY+" tile_overlap="+tlOverlap+" first_file_index_i="+1+nmrOfTilesOpened+" directory="+positionDir+" file_names=["+substring(fileName, 0, lengthOf(fileName)-lengthOf(fileSeries))+"#"+mosaicSize+".tif] output_textfile_name=TileConfiguration.txt fusion_method=[Linear Blending] regression_threshold=0.30 max/avg_displacement_threshold=2.50 absolute_displacement_threshold=3.50 ignore_z_stage computation_parameters=[Save memory (but be slower)] image_output=[Fuse and display]");
+					nmrOfTilesOpened = nmrOfTilesOpened + TilesPerPos;
 
-					if (colors.length<2) run(colors[0]);
+					//setBatchMode(false);
+					//for (xx=0;xx<colors.length;xx++){
+						//print(colors[xx]);
+					//}
+					
+					if (colors.length<2) 
+						run(colors[0]);
 					else{
 						for (ii=0; ii<colors.length; ii++){ //Assigning colors to final image corresponding to excitation laser wavelengths
 							Stack.setDisplayMode("color");
 							Stack.setChannel(ii+1);
 							run(colors[ii]);
 						}
-						run("Make Composite", "stack");
-						run("RGB Color", "slices");
+						run("Make Composite", "stack");	
 					}
-					
+			
 					//Setting the native scale
-					run("Properties...", "channels=1 slices="+zSteps+" frames="+tPoints+" unit="+unit+" pixel_width="+width+" pixel_height="+height+" voxel_depth="+depth+"");
+					run("Properties...", "channels="+channels_nmr+" slices="+zSteps+" frames="+tPoints+" unit="+unit+" pixel_width="+width+" pixel_height="+height+" voxel_depth="+depth+"");
+					//Stack.setDisplayMode("composite");
 
-					if (processing_checkBox==1) { //Basic processing like contrast enhancing and despeckling
-						run("Despeckle", "stack");
-						//run("Color Balance...");
-						run("Enhance Contrast...", "saturated=0.1 process_all use");
-						saveAs("tiff", dir+File.separator+"STITCHED&processed_"+substring(files[f], 0, lengthOf(files[f])-4)+".tif");//saving stiched image
-						saveType = "CHED&";
-					}
-					else {
-						saveAs("tiff", dir+File.separator+"STITCHED_"+substring(files[f], 0, lengthOf(files[f])-4)+".tif"); //saving stiched image
-						saveType = "CHED_";
-					}
-
+					savingDir = outputFold+File.separator+"STITCHED_"+substring(files[f], 0, lengthOf(files[f])-4);
+					File.makeDirectory(savingDir);
+					saveAs("tiff", savingDir+File.separator+"STITCHED_"+substring(files[f], 0, lengthOf(files[f])-4)+"_pos"+l+".tif"); //saving stiched image
+					saveType = "CHED_";
+									
 					pixelTotal = pixelTotal+ (getHeight()*getWidth());
 					imgInfo=getImageInfo();
 					sizeLoaded = sizeLoaded + parseInt(substring(imgInfo, lastIndexOf(imgInfo, "Size:")+7, lastIndexOf(imgInfo, "MB")));
 					nmrOfFilesStitched = nmrOfFilesStitched+1;
-					close();
+					//close("Fused");list[st]
 				
-					list = getFileList(savingDir_temp);
-  					for (l=0; l<list.length; l++){
-  						File.delete(savingDir_temp+File.separator+list[l]); //deleting individual files created. The original data is still intact in the .czi files
-  						File.delete(savingDir_temp);
+					list = getFileList(positionDir);
+  					for (li=0; li<list.length; li++){
+  						File.delete(positionDir+File.separator+list[li]); //deleting individual files created. The original data is still intact in the .czi files
+  						File.delete(positionDir);	//deletes folder
+  						File.delete(savingDir_temp);	//deletes folder										
 					}
 				}
 			}
+		Tot_nmrOfTilesOpened = Tot_nmrOfTilesOpened + TotalNumTiles;
+		resultArray = append(resultArray, savingDir);
+		//print("result array: "+resultArray[k-1]);
+		//print("result array length: "+resultArray.length);
 		}
 	}
-}
-if (k==0) exit("Sorry, there seems to be no .czi files in \n"+dir+".");
-else if (seriesCount == 1) exit("Your .czi file(s) in \n"+dir+" \ndon't seem to have more than 1 tile.");
-	
-setBatchMode(false);
-if (visualize_checkBox==1) {
-	list = getFileList(dir);
-	for (l=0; l<list.length; l++){
-  		if (matches(list[l], ".*STIT"+saveType+".*")) open(dir+File.separator+list[l]);		
+//print(f);
+						
+if (k==0) 
+	exit("Sorry, there seems to be no .czi files in \n"+dir+".");
+else if (seriesCount == 1) 
+	exit("Your .czi file(s) in \n"+dir+" \ndon't seem to have more than 1 tile.");
+
+close("*");
+
+	for (rA=0; rA<resultArray.length; rA++){
+		//print(resultArray[rA]);
+		//print("array length is: "+resultArray.length);
+		//print("current array is: "+resultArray[rA]);
+		list = getFileList(resultArray[rA]);
+		for (st=0; st<list.length; st++){
+  			if (matches(list[st], ".*STIT"+saveType+".*")){
+  				//print(resultArray[rA]+File.separator+list[st]);
+  				open(resultArray[rA]+File.separator+list[st]);
+				//run("Color Balance...");
+				run("RGB Color", "slices");
+				title=getTitle();
+				title=substring(title,0,lengthOf(title)-13);
+				//print(title);
+  				//print(list[st]);
+  				close(list[st]);
+  			}
+		}
+		if (positionsNum>1){
+			//setBatchMode(false);
+			run("Images to Stack", "name=Stack title="+title+" keep");
+			rowNum = list.length/2;
+			run("Make Montage...", "columns="+list.length-rowNum+" rows="+rowNum+" scale="+1/positionsNum+" border=4 font=30 label");
+			saveAs("tiff", resultArray[rA]+File.separator+"Montage.tif"); //saving stiched image
+			close("stack");
+			if(visualize_checkBox==1){	
+				setBatchMode(false);
+				//open(resultArray[rA]+File.separator+"Montage.tif");
+				//run("Despeckle", "stack");
+     			//run("Enhance Contrast...", "saturated=0.1 process_all use");
+			}	
+		}
+		else{
+			if(visualize_checkBox==1){
+				open(resultArray[rA]+File.separator+list[st]);
+			}
+		}
 	}
-}
+
 
 end = getTime();
 Dialog.create("This is not good for Zeiss business...");
-Dialog.addMessage("You just stitched "+nmrOfTilesOpened+" Tile(s) into "+nmrOfFilesStitched+" Mosaic file(s).\n \nThat's a total of "+pixelTotal+" pixels and "+sizeLoaded+" MB... \n...within "+(end-start)/1000+" seconds ("+(end-start)/1000/60+" minutes).\n \nYou know, that's Super Computer kind of stuff...clap clap!");
+Dialog.addMessage("You just stitched "+Tot_nmrOfTilesOpened+" Tile(s) into "+nmrOfFilesStitched+" Mosaic position(s) from "+k+" files.\n \nThat's a total of "+pixelTotal+" pixels and "+sizeLoaded+" MB... \n...within "+(end-start)/1000+" seconds ("+(end-start)/1000/60+" minutes).\n \nYou know, that's Super Computer kind of stuff...clap clap!");
 Dialog.show();
+
+//function to append data to expanding arrays
+function append(arr, value) {
+     arr2 = newArray(arr.length+1);
+     for (i=0; i<arr.length; i++)
+        arr2[i] = arr[i];
+     arr2[arr.length] = value;
+     return arr2;
+  }
