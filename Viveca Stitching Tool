@@ -15,11 +15,11 @@ Both modes of tile scanning in ZEN black are supported, uni and bidirectional
 
 close("*");
 Dialog.create("Ok, grab your needle. This is just like knitting");
-Dialog.addMessage("Welcome to our stitching tool. \n");
-Dialog.addMessage("\nThis macro is mainly aimed at stitching tiled-images produced by our Zeiss LSM700. \nAt the moment, stitching is only working with .czi files which cannot contain spaces in their file name. \nThis tool is prepared for stiching simple tiled images. You may encouter problems if you used 'positions' or 'timeseries'.");
+Dialog.addMessage("Welcome to our Viveca stitching tool. \n");
+Dialog.addMessage("\nThis macro is mainly aimed for stitching tiled-images produced by our Zeiss LSM700. \nAt the moment, stitching is only working with .czi files which cannot contain spaces in their file name.");
 Dialog.addCheckbox("  Display your images once they are stitched?", true); 
 Dialog.addCheckbox("\n  My tiles were scanned in 'zigzag / snake / bidirection' mode", false);
-Dialog.addMessage("Still under development. Any issues should be reported in order to improve the tool. \ncontact: vasco.fachada(at)gmail.com");
+Dialog.addMessage("Constantly under development. Please consider acknowledging the author in publications. \nAny issues should be reported in order to improve the tool. \n \nauthor: Vasco Fachada (vasco.fachada(at)gmail.com)");
 Dialog.show();
 visualize_checkBox = Dialog.getCheckbox();
 tilingMode_checkBox = Dialog.getCheckbox();
@@ -134,6 +134,7 @@ sizeLoaded = 0;
 			channels_nmr = 	parseInt(substring(fullMeta, indexOf(fullMeta, "SizeC =")+8, indexOf(fullMeta, "SizeC =")+9)); 
 			channels = newArray(channels_nmr);
 			colors = newArray(channels_nmr);
+			print(channels_nmr+" channels:");
 				
 			for (ii=0; ii<channels_nmr; ii++){
 				laserUsed = substring(fullMeta, indexOf(fullMeta, "Attenuator|Laser #"+ii+1+" =")+27, indexOf(fullMeta, "Attenuator|Laser #"+ii+1+" =")+31);
@@ -142,9 +143,11 @@ sizeLoaded = 0;
 				if (channels[ii] == 405) colors[ii] = "Blue";
 				else if (channels[ii] == 488) colors[ii] = "Green";
 				else if (channels[ii] == 555) colors[ii] = "Yellow";
-				else if (channels[ii] == 639) colors[ii] = "Red";
+				else if (channels[ii] == 639){
+					colors[ii] = "Red";
+					print(colors[ii]+" with "+laserUsed+" laser");
 				//else print(colors[ii]);
-				else exit("While reading the metadata we have been unable to find which laser was used to scan one or more of the channels. \nPlease contact vasco.fachada@gmail.com for help.");	
+				}else exit("While reading the metadata we have been unable to find which laser was used to scan one or more of the channels. \nPlease contact vasco.fachada@gmail.com for help.");	
 			}
 			
 		//waitForUser;
@@ -174,10 +177,9 @@ sizeLoaded = 0;
 						close();
 					}
 					
-		     	
 				
 					//STICHING AND VISUALIZATION
-					
+		//			setBatchMode(false);
 					//"Grid/Collection stitching" used in Preibisch et al. Bioinformatics (2009).
 					run("Grid/Collection stitching", "type="+tilingDirection+" grid_size_x="+gridX+" grid_size_y="+gridY+" tile_overlap="+tlOverlap+" first_file_index_i="+1+nmrOfTilesOpened+" directory="+positionDir+" file_names=["+substring(fileName, 0, lengthOf(fileName)-lengthOf(fileSeries))+"#"+mosaicSize+".tif] output_textfile_name=TileConfiguration.txt fusion_method=[Linear Blending] regression_threshold=0.30 max/avg_displacement_threshold=2.50 absolute_displacement_threshold=3.50 ignore_z_stage computation_parameters=[Save memory (but be slower)] image_output=[Fuse and display]");
 					//run("Grid/Collection stitching", "type= grid_size_x="+gridX+" grid_size_y="+gridY+" tile_overlap="+tlOverlap+" first_file_index_i="+1+nmrOfTilesOpened+" directory="+positionDir+" file_names=["+substring(fileName, 0, lengthOf(fileName)-lengthOf(fileSeries))+"#"+mosaicSize+".tif] output_textfile_name=TileConfiguration.txt fusion_method=[Linear Blending] regression_threshold=0.30 max/avg_displacement_threshold=2.50 absolute_displacement_threshold=3.50 ignore_z_stage computation_parameters=[Save memory (but be slower)] image_output=[Fuse and display]");
@@ -187,6 +189,11 @@ sizeLoaded = 0;
 					//for (xx=0;xx<colors.length;xx++){
 						//print(colors[xx]);
 					//}
+					if (isOpen('Fused') == 1)
+						print('Stiching successful!');
+					else{
+						waitForUser('There was a problem. \nCheck for instance if you have spaces in your file path, there should be none. \nRestart the stitching.');
+					}
 					
 					if (colors.length<2) 
 						run(colors[0]);
@@ -245,21 +252,25 @@ close("*");
 		for (st=0; st<list.length; st++){
   			if (matches(list[st], ".*STIT"+saveType+".*")){
   				//print(resultArray[rA]+File.separator+list[st]);
-  				open(resultArray[rA]+File.separator+list[st]);
+  				curTil = resultArray[rA]+File.separator+list[st];
+  				open(curTil);
 				//run("Color Balance...");
 				run("RGB Color", "slices");
 				title=getTitle();
+				//print(title);
 				title=substring(title,0,lengthOf(title)-13);
 				//print(title);
+				//print(curTil);
   				//print(list[st]);
-  				close(list[st]);
+  				close(title);
   			}
 		}
 		if (positionsNum>1){
 			//setBatchMode(false);
 			run("Images to Stack", "name=Stack title="+title+" keep");
-			rowNum = list.length/2;
-			run("Make Montage...", "columns="+list.length-rowNum+" rows="+rowNum+" scale="+1/positionsNum+" border=4 font=30 label");
+			colNum = list.length/2;
+			rowNum = list.length/colNum;
+			run("Make Montage...", "columns="+colNum+" rows="+rowNum+" scale="+1/positionsNum+" border=4 font=30 label");
 			saveAs("tiff", resultArray[rA]+File.separator+"Montage.tif"); //saving stiched image
 			close("stack");
 			if(visualize_checkBox==1){	
@@ -271,7 +282,11 @@ close("*");
 		}
 		else{
 			if(visualize_checkBox==1){
-				open(resultArray[rA]+File.separator+list[st]);
+				//print(resultArray[rA]);
+				//print(list[0]);
+				setBatchMode(false);
+				//print(curTil);
+				open(curTil);
 			}
 		}
 	}
